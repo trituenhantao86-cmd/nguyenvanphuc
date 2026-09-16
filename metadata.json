@@ -1,0 +1,6 @@
+{
+  "name": "PHÚC AI – SOẠN VĂN BẢN HÀNH CHÍNH",
+  "description": "Soạn nhanh – Đúng thể thức – Chuẩn định dạng – Dễ sử dụng. Bản quyền © Nguyễn Văn Phúc - Zalo: 0949.379.531",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
