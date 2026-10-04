@@ -117,4 +117,6 @@ export interface WizardDraft {
   detailLevel: DetailLevel;
   style: DocStyle;
   audience: AudienceType;
+  initialStep?: number;
+  autoStart?: boolean;
 }

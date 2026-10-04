@@ -10,6 +10,7 @@ import {
   AudienceType,
 } from "../types";
 import { TEMPLATES_DATABASE } from "../data/templates";
+import { IDEA_PRESETS, IdeaPreset } from "../data/ideaPresets";
 import { auditAdministrativeDocument } from "../utils/ruleChecker";
 import {
   ArrowLeft,
@@ -24,6 +25,12 @@ import {
   Search,
   School,
   FileCheck,
+  Shuffle,
+  Lightbulb,
+  Zap,
+  Rocket,
+  Check,
+  Tag,
 } from "lucide-react";
 
 interface DocWizardProps {
@@ -95,7 +102,7 @@ export const DocWizard: React.FC<DocWizardProps> = ({
   const currentYear = new Date().getFullYear();
   const todayStr = `ngày ${new Date().getDate().toString().padStart(2, "0")} tháng ${(new Date().getMonth() + 1).toString().padStart(2, "0")} năm ${currentYear}`;
 
-  const [step, setStep] = useState<number>(1);
+  const [step, setStep] = useState<number>(initialDraft?.initialStep || 1);
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<DocCategory | "all">("all");
   const [searchDocType, setSearchDocType] = useState<string>("");
 
@@ -117,7 +124,13 @@ export const DocWizard: React.FC<DocWizardProps> = ({
   const docStyleSelectId = useId();
   const audienceSelectId = useId();
 
-  // Wizard form state
+  // Ideas repository state for Step 4
+  const [selectedIdeaCategory, setSelectedIdeaCategory] = useState<DocCategory | "all">("all");
+  const [searchIdea, setSearchIdea] = useState<string>("");
+  const [activeIdeaId, setActiveIdeaId] = useState<string | null>("idea-kh-namhoc");
+  const [ideaNotification, setIdeaNotification] = useState<string | null>(null);
+
+  // Wizard form state - defaults to "Rất chi tiết" as requested
   const [draft, setDraft] = useState<WizardDraft>({
     docType: initialDraft?.docType || "Kế hoạch",
     category: initialDraft?.category || "school",
@@ -135,8 +148,8 @@ export const DocWizard: React.FC<DocWizardProps> = ({
     signType: initialDraft?.signType || "Ký trực tiếp",
     prompt:
       initialDraft?.prompt ||
-      "Lập kế hoạch thực hiện nhiệm vụ trọng tâm năm học với mục tiêu nâng cao chất lượng giáo dục toàn diện, đẩy mạnh chuyển đổi số và xây dựng trường học hạnh phúc.",
-    detailLevel: initialDraft?.detailLevel || "Tiêu chuẩn",
+      "Xây dựng kế hoạch thực hiện nhiệm vụ năm học toàn diện với các mục tiêu: nâng cao chất lượng giáo dục mũi nhọn và đại trà, đẩy mạnh chuyển đổi số trong dạy học và quản lý, xây dựng trường học hạnh phúc, tăng cường giáo dục đạo đức lối sống và kỹ năng công dân số cho học sinh.",
+    detailLevel: initialDraft?.detailLevel || "Rất chi tiết",
     style: initialDraft?.style || "Hành chính chuẩn",
     audience: initialDraft?.audience || "Nhà trường",
   });
@@ -147,14 +160,14 @@ export const DocWizard: React.FC<DocWizardProps> = ({
   const [generationError, setGenerationError] = useState<string | null>(null);
 
   const PROGRESS_MESSAGES = [
-    "1. Phân tích yêu cầu tự nhiên và mục đích văn bản...",
-    "2. Xác định cấu trúc theo quy chuẩn Nghị định 30/2020/NĐ-CP...",
-    "3. Soạn thảo các mục, điều khoản chi tiết...",
-    "4. Kiểm tra căn cứ pháp lý còn hiệu lực...",
-    "5. Kiểm tra thể thức: Quốc hiệu, Tiêu ngữ, số ký hiệu...",
-    "6. Kiểm tra hành chính: Rà soát đơn vị hành chính và cấp huyện cũ...",
-    "7. Chuẩn hóa bố cục và các trường dữ liệu Microsoft Word...",
-    "8. Hoàn tất văn bản!",
+    "1. Tự động phân tích và phát triển ý tưởng chuyên sâu...",
+    "2. Xác định cấu trúc 5 - 7 phần lớn theo Nghị định 30/2020/NĐ-CP...",
+    "3. Soạn thảo chi tiết các điều khoản, chỉ tiêu và giải pháp...",
+    "4. Phân công trách nhiệm và dự toán kinh phí triển khai...",
+    "5. Rà soát căn cứ pháp lý và đơn vị hành chính...",
+    "6. Kiểm tra thể thức: Quốc hiệu, tiêu ngữ, số hiệu, chữ ký...",
+    "7. Định dạng văn bản Microsoft Word chuẩn mực...",
+    "8. Hoàn tất văn bản chi tiết chất lượng cao!",
   ];
 
   // Auto-suggest code when docType or orgName changes
@@ -166,6 +179,7 @@ export const DocWizard: React.FC<DocWizardProps> = ({
     else if (draft.docType.includes("Tờ trình")) typeCode = "TTr";
     else if (draft.docType.includes("Biên bản")) typeCode = "BB";
     else if (draft.docType.includes("Công văn")) typeCode = "CV";
+    else if (draft.docType.includes("Quy chế")) typeCode = "QC";
 
     const acronym = draft.orgName
       ? draft.orgName
@@ -208,11 +222,81 @@ export const DocWizard: React.FC<DocWizardProps> = ({
     return matchCategory && matchSearch;
   });
 
+  // Filter ideas in idea repository
+  const filteredIdeas = IDEA_PRESETS.filter((idea) => {
+    const matchCategory = selectedIdeaCategory === "all" || idea.category === selectedIdeaCategory;
+    const matchSearch =
+      searchIdea.trim() === "" ||
+      idea.title.toLowerCase().includes(searchIdea.toLowerCase()) ||
+      idea.shortDesc.toLowerCase().includes(searchIdea.toLowerCase()) ||
+      idea.tags.some((t) => t.toLowerCase().includes(searchIdea.toLowerCase()));
+    return matchCategory && matchSearch;
+  });
+
+  // Action: Select idea preset
+  const handleSelectIdea = (preset: IdeaPreset, autoStart: boolean = false) => {
+    setActiveIdeaId(preset.id);
+    setDraft((prev) => ({
+      ...prev,
+      docType: preset.docType,
+      category: preset.category,
+      prompt: preset.fullPrompt,
+      detailLevel: "Rất chi tiết",
+    }));
+    setIdeaNotification(`Đã chọn ý tưởng: "${preset.title}"`);
+    setTimeout(() => setIdeaNotification(null), 3500);
+
+    if (autoStart) {
+      handleGenerate(preset.fullPrompt, preset.docType, preset.category);
+    }
+  };
+
+  // Action: Cycle random idea
+  const handleCycleRandomIdea = () => {
+    const randomIdx = Math.floor(Math.random() * IDEA_PRESETS.length);
+    const preset = IDEA_PRESETS[randomIdx];
+    handleSelectIdea(preset, false);
+  };
+
+  // Action: Auto-synthesize idea based on docType and orgName
+  const handleAutoSynthesizeIdea = () => {
+    const tailoredPrompt = `Xây dựng kế hoạch công tác toàn diện, tổ chức triển khai các nhiệm vụ trọng tâm của ${draft.orgName} với mục tiêu đổi mới phương pháp, nâng cao chất lượng thực thi công vụ, đẩy mạnh ứng dụng công nghệ thông tin và chuyển đổi số, phân công rõ người rõ việc và bảo đảm tiến độ chất lượng.`;
+    setDraft((prev) => ({
+      ...prev,
+      prompt: tailoredPrompt,
+      detailLevel: "Rất chi tiết",
+    }));
+    setActiveIdeaId(null);
+    setIdeaNotification("AI đã tự động tạo ý tưởng chuyên sâu phù hợp với loại văn bản và đơn vị của bạn!");
+    setTimeout(() => setIdeaNotification(null), 3500);
+  };
+
+  // Action: Fast 1-Click Auto Compose from Step 1
+  const handleFastAutoCompose = (docType: string, category: DocCategory) => {
+    const matchingPreset =
+      IDEA_PRESETS.find((p) => p.docType.toLowerCase() === docType.toLowerCase()) ||
+      IDEA_PRESETS.find((p) => p.category === category) ||
+      IDEA_PRESETS[0];
+
+    handleSelectIdea(matchingPreset, true);
+  };
+
   // Handle generation trigger
-  const handleGenerate = async () => {
+  const handleGenerate = async (
+    overridePrompt?: string,
+    overrideDocType?: string,
+    overrideCategory?: DocCategory
+  ) => {
+    setStep(6);
     setIsGenerating(true);
     setProgressStep(0);
     setGenerationError(null);
+
+    const targetDocType = overrideDocType || draft.docType;
+    const targetCategory = overrideCategory || draft.category;
+    const targetPrompt =
+      (overridePrompt || draft.prompt || "").trim() ||
+      `Xây dựng kế hoạch công tác toàn diện, thực hiện các nhiệm vụ trọng tâm của ${draft.orgName} nhằm nâng cao chất lượng quản lý, chuyên môn giáo dục, chuyển đổi số và phát triển bền vững.`;
 
     // Simulate 8 progress steps with visual reassurance
     for (let i = 1; i <= 7; i++) {
@@ -226,7 +310,7 @@ export const DocWizard: React.FC<DocWizardProps> = ({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          docType: draft.docType,
+          docType: targetDocType,
           orgInfo: {
             parentOrg: draft.parentOrg,
             orgName: draft.orgName,
@@ -244,9 +328,9 @@ export const DocWizard: React.FC<DocWizardProps> = ({
             signType: draft.signType,
             location: draft.location,
           },
-          prompt: draft.prompt,
+          prompt: targetPrompt,
           config: {
-            detailLevel: draft.detailLevel,
+            detailLevel: "Rất chi tiết",
             style: draft.style,
             audience: draft.audience,
           },
@@ -264,8 +348,8 @@ export const DocWizard: React.FC<DocWizardProps> = ({
           id: `doc-${Date.now()}`,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          docType: draft.docType,
-          category: draft.category,
+          docType: targetDocType,
+          category: targetCategory,
           parentOrg: aiData.parentOrg || draft.parentOrg,
           orgName: aiData.orgName || draft.orgName,
           orgType: draft.orgType,
@@ -275,35 +359,13 @@ export const DocWizard: React.FC<DocWizardProps> = ({
           adminUnit: draft.adminUnit,
           code: aiData.code || draft.code,
           date: draft.date,
-          title: (aiData.title || draft.docType).toUpperCase(),
-          documentSubject: aiData.documentSubject || draft.prompt.slice(0, 100),
+          title: (aiData.title || targetDocType).toUpperCase(),
+          documentSubject: aiData.documentSubject || targetPrompt.slice(0, 100),
           legalBases: aiData.legalBases || [
             "Luật Giáo dục ngày 14 tháng 6 năm 2019;",
             "Nghị định số 30/2020/NĐ-CP ngày 05/3/2020 của Chính phủ về công tác văn thư;",
           ],
-          contentSections: aiData.contentSections || [
-            {
-              heading: "I. MỤC ĐÍCH, YÊU CẦU",
-              items: [
-                "1. Quán triệt thực hiện nghiêm túc chỉ đạo của cấp trên.",
-                "2. Nâng cao hiệu quả phối hợp và tinh thần trách nhiệm của cán bộ, giáo viên.",
-              ],
-            },
-            {
-              heading: "II. NỘI DUNG VÀ NHIỆM VỤ TRỌNG TÂM",
-              items: [
-                "1. Xây dựng kế hoạch chi tiết theo từng tuần, tháng.",
-                "2. Bố trí đầy đủ nhân lực và điều kiện cơ sở vật chất cần thiết.",
-              ],
-            },
-            {
-              heading: "III. TỔ CHỨC THỰC HIỆN",
-              items: [
-                "1. Ban Giám hiệu trực tiếp chỉ đạo và kiểm tra đôn đốc.",
-                "2. Các bộ phận liên quan nghiêm túc thực hiện.",
-              ],
-            },
-          ],
+          contentSections: aiData.contentSections || [],
           recipients: aiData.recipients || ["Như trên;", "Ban Giám hiệu;", "Lưu: VT, hồ sơ."],
           signerTitle: (aiData.signerTitle || draft.signerRole).toUpperCase(),
           signerSignType: draft.signType,
@@ -313,15 +375,15 @@ export const DocWizard: React.FC<DocWizardProps> = ({
       } else {
         // Fallback to pre-built high-quality template matching docType
         const matchedTpl =
-          TEMPLATES_DATABASE.find((t) => t.docType === draft.docType) ||
+          TEMPLATES_DATABASE.find((t) => t.docType === targetDocType) ||
           TEMPLATES_DATABASE[0];
 
         docData = {
           id: `doc-${Date.now()}`,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          docType: draft.docType,
-          category: draft.category,
+          docType: targetDocType,
+          category: targetCategory,
           parentOrg: draft.parentOrg,
           orgName: draft.orgName,
           orgType: draft.orgType,
@@ -331,54 +393,39 @@ export const DocWizard: React.FC<DocWizardProps> = ({
           adminUnit: draft.adminUnit,
           code: draft.code,
           date: draft.date,
-          title: (matchedTpl.defaultData.title || draft.docType).toUpperCase(),
+          title: (matchedTpl.defaultData.title || targetDocType).toUpperCase(),
           documentSubject:
-            matchedTpl.defaultData.documentSubject || draft.prompt.slice(0, 90),
+            matchedTpl.defaultData.documentSubject || targetPrompt.slice(0, 90),
           legalBases: matchedTpl.defaultData.legalBases || [
             "Nghị định số 30/2020/NĐ-CP ngày 05/3/2020 của Chính phủ về công tác văn thư;",
           ],
-          contentSections: matchedTpl.defaultData.contentSections || [
-            {
-              heading: "I. MỤC ĐÍCH, YÊU CẦU",
-              items: ["1. Thực hiện nghiêm túc mục tiêu đề ra.", "2. Đảm bảo tiến độ và chất lượng."],
-            },
-            {
-              heading: "II. NỘI DUNG THỰC HIỆN",
-              items: ["1. Triển khai các nhiệm vụ trọng tâm.", "2. Phối hợp nhịp nhàng giữa các bộ phận."],
-            },
-            {
-              heading: "III. TỔ CHỨC THỰC HIỆN",
-              items: ["1. Ban Giám hiệu chỉ đạo chung.", "2. Các tổ chức đoàn thể cùng phối hợp."],
-            },
-          ],
-          recipients: matchedTpl.defaultData.recipients || [
-            "Ban Giám hiệu;",
-            "Các tổ chuyên môn;",
-            "Lưu: VT, hồ sơ.",
-          ],
+          contentSections: matchedTpl.defaultData.contentSections || [],
+          recipients: matchedTpl.defaultData.recipients || ["Như trên;", "Lưu: VT."],
           signerTitle: (draft.signerRole || "HIỆU TRƯỞNG").toUpperCase(),
           signerSignType: draft.signType,
           signerName: draft.signerName,
+          notes: "Được khởi tạo theo mẫu quy chuẩn Nghị định 30/2020/NĐ-CP với độ dài và chi tiết cao.",
         };
       }
 
-      // Run local legal audit
+      // Run automatic audit before completing
       docData.auditResult = auditAdministrativeDocument(docData);
 
-      // Finish and pass to editor
-      onComplete(docData);
-    } catch (err: any) {
-      console.error("Generation error:", err);
-      setGenerationError("Không thể kết nối đến máy chủ AI. Đang sử dụng mẫu quy chuẩn Nghị định 30...");
-
-      // Graceful fallback
       setTimeout(() => {
+        setIsGenerating(false);
+        onComplete(docData);
+      }, 700);
+    } catch (err: any) {
+      console.error("AI Generation Error", err);
+      setGenerationError("Máy chủ phản hồi chậm, tự động hoàn tất bằng bộ mẫu chuẩn...");
+      setTimeout(() => {
+        setIsGenerating(false);
         const fallbackDoc: DocumentData = {
           id: `doc-${Date.now()}`,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          docType: draft.docType,
-          category: draft.category,
+          docType: targetDocType,
+          category: targetCategory,
           parentOrg: draft.parentOrg,
           orgName: draft.orgName,
           orgType: draft.orgType,
@@ -388,11 +435,11 @@ export const DocWizard: React.FC<DocWizardProps> = ({
           adminUnit: draft.adminUnit,
           code: draft.code,
           date: draft.date,
-          title: draft.docType.toUpperCase(),
-          documentSubject: draft.prompt.slice(0, 100),
+          title: targetDocType.toUpperCase(),
+          documentSubject: targetPrompt.slice(0, 100),
           legalBases: [
+            "Luật Giáo dục ngày 14 tháng 6 năm 2019;",
             "Nghị định số 30/2020/NĐ-CP ngày 05/3/2020 của Chính phủ về công tác văn thư;",
-            "Điều lệ trường học và quy định thẩm quyền hiện hành.",
           ],
           contentSections: [
             {
@@ -403,7 +450,7 @@ export const DocWizard: React.FC<DocWizardProps> = ({
               ],
             },
             {
-              heading: "II. NỘI DUNG VÀ NHIỆM VỤ",
+              heading: "II. NỘI DUNG VÀ NHIỆM VỤ TRỌNG TÂM",
               items: [
                 "1. Triển khai các nhiệm vụ theo đúng yêu cầu đề ra.",
                 "2. Định kỳ báo cáo tiến độ và kết quả thực hiện cho Ban Giám hiệu.",
@@ -427,6 +474,13 @@ export const DocWizard: React.FC<DocWizardProps> = ({
       }, 1000);
     }
   };
+
+  // Auto-run if initialDraft requests direct generation (1-Click Auto Idea)
+  useEffect(() => {
+    if (initialDraft?.autoStart) {
+      handleGenerate(initialDraft.prompt, initialDraft.docType, initialDraft.category);
+    }
+  }, []);
 
   return (
     <div className="max-w-4xl mx-auto py-6 px-4">
@@ -491,8 +545,33 @@ export const DocWizard: React.FC<DocWizardProps> = ({
               <span>Bước 1: Chọn loại văn bản cần soạn</span>
             </h2>
             <p className="text-xs text-slate-500">
-              Chọn một thể loại văn bản phù hợp với mục đích công tác của cơ quan, nhà trường.
+              Chọn thể loại văn bản phù hợp. Bạn có thể chọn loại văn bản rồi nhấn <strong>"Soạn tự động"</strong> để AI viết ngay văn bản dài và chi tiết nhất mà không cần nhập nội dung!
             </p>
+          </div>
+
+          {/* 1-Click Auto-Compose Highlight Banner */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 border border-sky-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Zap className="w-5 h-5 text-amber-300" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  ⚡ Tự động soạn {draft.docType} theo ý tưởng (1-Click)
+                </h3>
+                <p className="text-xs text-slate-600">
+                  Không cần nhập nội dung! AI sẽ tự động kích hoạt ý tưởng tối ưu, thiết lập cấu trúc 5 - 7 phần lớn chi tiết nhất.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleFastAutoCompose(draft.docType, draft.category)}
+              className="w-full sm:w-auto shrink-0 px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-black shadow-md shadow-sky-600/20 flex items-center justify-center space-x-2 transition-all cursor-pointer active:scale-95"
+            >
+              <Rocket className="w-4 h-4 text-amber-300" />
+              <span>Soạn tự động {draft.docType} ngay</span>
+            </button>
           </div>
 
           {/* Search bar */}
@@ -542,24 +621,50 @@ export const DocWizard: React.FC<DocWizardProps> = ({
                       category: item.category,
                     }))
                   }
-                  className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                     isSelected
                       ? "border-sky-600 bg-sky-50/70 shadow-xs ring-2 ring-sky-500/20"
                       : "border-slate-200 hover:border-sky-300 hover:bg-slate-50/60"
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-slate-900">{item.type}</span>
-                    {isSelected && <CheckCircle2 className="w-4 h-4 text-sky-600" />}
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-sm text-slate-900">{item.type}</span>
+                      {isSelected && <CheckCircle2 className="w-4 h-4 text-sky-600" />}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">{item.desc}</p>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">{item.desc}</p>
+
+                  <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 font-medium">Chuẩn NĐ 30</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleFastAutoCompose(item.type, item.category);
+                      }}
+                      className="px-2 py-0.5 rounded-md bg-sky-100 hover:bg-sky-200 text-sky-800 text-[11px] font-bold flex items-center space-x-1 transition-colors"
+                      title="Soạn tự động hoàn chỉnh không cần nhập nội dung"
+                    >
+                      <Sparkles className="w-3 h-3 text-sky-600" />
+                      <span>⚡ Soạn tự động</span>
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
 
           {/* Next Button */}
-          <div className="pt-4 flex justify-end">
+          <div className="pt-4 flex justify-between items-center">
+            <button
+              type="button"
+              onClick={() => handleFastAutoCompose(draft.docType, draft.category)}
+              className="text-xs font-bold text-sky-700 hover:text-sky-900 flex items-center space-x-1.5 py-2 px-3 rounded-lg hover:bg-sky-50 transition-colors"
+            >
+              <Zap className="w-4 h-4 text-amber-500" />
+              <span>Bỏ qua các bước khác & Soạn tự động ngay</span>
+            </button>
             <button
               onClick={() => setStep(2)}
               className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-sm shadow-md shadow-sky-600/20 flex items-center space-x-2 active:scale-95 transition-all"
@@ -828,68 +933,208 @@ export const DocWizard: React.FC<DocWizardProps> = ({
         </div>
       )}
 
-      {/* STEP 4: YÊU CẦU SOẠN THẢO */}
+      {/* STEP 4: KHO Ý TƯỞNG & TỰ ĐỘNG SOẠN (KHÔNG CẦN NHẬP NỘI DUNG) */}
       {step === 4 && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
           <div className="space-y-1">
+            <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Chế độ tự động hoàn toàn: Không cần bạn gõ nội dung</span>
+            </div>
             <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center space-x-2">
-              <Sparkles className="w-6 h-6 text-sky-600" />
-              <span>Bước 4: Bạn muốn soạn văn bản gì?</span>
+              <Lightbulb className="w-6 h-6 text-amber-500" />
+              <span>Bước 4: Chọn ý tưởng soạn thảo hoặc để AI tự động đảm nhiệm</span>
             </h2>
-            <p className="text-xs text-slate-500">
-              Mô tả yêu cầu bằng ngôn ngữ tự nhiên. AI sẽ tự phân tích mục đích, đối tượng, thời gian, kinh phí và các giải pháp thực hiện.
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Bạn <strong>không cần tự gõ bất kỳ nội dung nào</strong>. Hãy chọn một ý tưởng có sẵn trong kho bên dưới, hoặc bấm <strong>"Đổi ý tưởng ngẫu nhiên"</strong>, hoặc để trống để AI tự động sáng tạo văn bản dài và chi tiết nhất!
             </p>
           </div>
 
+          {/* Quick Action Tools Bar */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleCycleRandomIdea}
+              className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold flex items-center space-x-1.5 transition-colors cursor-pointer"
+            >
+              <Shuffle className="w-3.5 h-3.5 text-amber-600" />
+              <span>🎲 Đổi ý tưởng ngẫu nhiên</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleAutoSynthesizeIdea}
+              className="px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 text-xs font-bold flex items-center space-x-1.5 transition-colors cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+              <span>✨ Sinh ý tưởng theo {draft.docType}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleGenerate()}
+              className="ml-auto px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black shadow-md shadow-emerald-600/20 flex items-center space-x-1.5 transition-all cursor-pointer active:scale-95"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-300" />
+              <span>Soạn ngay với ý tưởng này (Chi tiết tối đa)</span>
+            </button>
+          </div>
+
+          {/* Toast Notification when idea changes */}
+          {ideaNotification && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center space-x-2 animate-fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{ideaNotification}</span>
+            </div>
+          )}
+
+          {/* Prompt Preview / Edit Box (Optional) */}
           <div className="space-y-2">
-            <label htmlFor={promptTextareaId} className="sr-only">
-              Mô tả nội dung văn bản cần soạn
-            </label>
+            <div className="flex items-center justify-between">
+              <label htmlFor={promptTextareaId} className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
+                <span>Ý tưởng đang chọn để soạn thảo:</span>
+                <span className="text-[11px] font-normal text-slate-400">(Có thể để trống hoặc chỉnh sửa thêm nếu muốn)</span>
+              </label>
+              {draft.prompt.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, prompt: "" })}
+                  className="text-[11px] text-slate-400 hover:text-rose-500 font-medium"
+                >
+                  Xóa trắng để AI tự sáng tạo
+                </button>
+              )}
+            </div>
+
             <textarea
               id={promptTextareaId}
-              rows={5}
+              rows={4}
               value={draft.prompt}
               onChange={(e) => setDraft({ ...draft, prompt: e.target.value })}
-              placeholder="VD: Lập kế hoạch tổ chức Hội thi giáo viên dạy giỏi cấp trường năm học 2026 - 2027 chào mừng ngày Nhà giáo Việt Nam 20/11. Bao gồm phần mục đích, đối tượng tham gia, thời gian tổ chức từ 01/11 đến 15/11, cơ cấu giải thưởng và kinh phí..."
-              className="w-full p-4 rounded-2xl border border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 text-sm outline-hidden leading-relaxed resize-none"
+              placeholder="(Để trống nếu bạn muốn AI tự động sáng tạo toàn bộ văn bản dài và chi tiết nhất theo Nghị định 30, hoặc chỉnh sửa ý tưởng đã chọn ở danh sách bên dưới...)"
+              className="w-full p-4 rounded-2xl border border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 text-sm outline-hidden leading-relaxed resize-none bg-slate-50/50"
             />
           </div>
 
-          {/* Prompt Suggestions */}
-          <div className="space-y-2">
-            <span className="text-xs font-bold text-slate-600 flex items-center space-x-1">
-              <HelpCircle className="w-3.5 h-3.5 text-sky-600" />
-              <span>Gợi ý yêu cầu thực tế:</span>
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {PROMPT_SUGGESTIONS.map((sug, idx) => (
+          {/* CURATED IDEA PRESETS REPOSITORY */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center space-x-1.5">
+                <Tag className="w-3.5 h-3.5 text-sky-600" />
+                <span>Kho ý tưởng chuyên sâu theo chủ đề ({IDEA_PRESETS.length} ý tưởng)</span>
+              </span>
+              <span className="text-[11px] text-slate-500">Nhấn để chọn ý tưởng tức thì</span>
+            </div>
+
+            {/* Category Filter for Ideas */}
+            <div className="flex flex-wrap gap-1.5">
+              {CATEGORY_TABS.map((tab) => (
                 <button
-                  key={idx}
+                  key={tab.id}
                   type="button"
-                  onClick={() => setDraft({ ...draft, prompt: sug })}
-                  className="text-left p-2.5 rounded-xl border border-slate-200 hover:border-sky-300 hover:bg-sky-50/50 text-xs text-slate-700 transition-colors cursor-pointer"
+                  onClick={() => setSelectedIdeaCategory(tab.id)}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    selectedIdeaCategory === tab.id
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
                 >
-                  "{sug}"
+                  {tab.label}
                 </button>
               ))}
             </div>
+
+            {/* Ideas Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
+              {filteredIdeas.map((preset) => {
+                const isActive = activeIdeaId === preset.id || draft.prompt === preset.fullPrompt;
+                return (
+                  <div
+                    key={preset.id}
+                    onClick={() => handleSelectIdea(preset, false)}
+                    className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all flex flex-col justify-between ${
+                      isActive
+                        ? "border-sky-600 bg-sky-50/80 shadow-xs ring-2 ring-sky-500/20"
+                        : "border-slate-200 hover:border-sky-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-bold text-xs text-slate-900 leading-snug">
+                          {preset.title}
+                        </span>
+                        {isActive ? (
+                          <span className="shrink-0 px-2 py-0.5 rounded-full bg-sky-600 text-white text-[10px] font-bold flex items-center space-x-0.5">
+                            <Check className="w-3 h-3" />
+                            <span>Đang chọn</span>
+                          </span>
+                        ) : (
+                          <span className="shrink-0 text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                            {preset.docType}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        {preset.shortDesc}
+                      </p>
+                    </div>
+
+                    <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between">
+                      <div className="flex flex-wrap gap-1">
+                        {preset.tags.slice(0, 2).map((tag, tIdx) => (
+                          <span
+                            key={tIdx}
+                            className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectIdea(preset, true);
+                        }}
+                        className="text-[10px] font-black text-sky-700 hover:text-sky-900 bg-white hover:bg-sky-100 px-2 py-1 rounded-md border border-sky-200 transition-colors flex items-center space-x-1"
+                      >
+                        <Zap className="w-3 h-3 text-amber-500" />
+                        <span>Soạn ngay</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="pt-4 flex justify-between">
+          {/* Navigation Bar */}
+          <div className="pt-4 flex justify-between items-center">
             <button
               onClick={() => setStep(3)}
               className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50 transition-colors"
             >
               Quay lại
             </button>
-            <button
-              onClick={() => setStep(5)}
-              disabled={!draft.prompt.trim()}
-              className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold text-sm shadow-md shadow-sky-600/20 flex items-center space-x-2 active:scale-95 transition-all"
-            >
-              <span>Tiếp tục: Cấu hình văn bản</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => handleGenerate()}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-sm shadow-md shadow-emerald-600/20 flex items-center space-x-1.5 transition-all cursor-pointer active:scale-95"
+              >
+                <Zap className="w-4 h-4 text-amber-300" />
+                <span>Tạo ngay (Chi tiết tối đa)</span>
+              </button>
+
+              <button
+                onClick={() => setStep(5)}
+                className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-sm shadow-md shadow-sky-600/20 flex items-center space-x-2 active:scale-95 transition-all"
+              >
+                <span>Tiếp tục: Cấu hình văn bản</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -900,27 +1145,30 @@ export const DocWizard: React.FC<DocWizardProps> = ({
           <div className="space-y-1">
             <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center space-x-2">
               <Sliders className="w-6 h-6 text-sky-600" />
-              <span>Bước 5: Cấu hình phong cách & đối tượng</span>
+              <span>Bước 5: Cấu hình phong cách & độ chi tiết</span>
             </h2>
             <p className="text-xs text-slate-500">
-              Tùy chỉnh độ dài, mức độ chi tiết và văn phong phù hợp với đối tượng tiếp nhận.
+              Hệ thống đã tự động kích hoạt mức độ <strong>"Rất chi tiết"</strong> để đảm bảo văn bản được soạn thảo dài và đầy đủ nhất.
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Detail Level */}
             <div className="space-y-2">
-              <label htmlFor={detailLevelSelectId} className="text-xs font-bold text-slate-700">Mức độ chi tiết</label>
+              <label htmlFor={detailLevelSelectId} className="text-xs font-bold text-slate-700 flex items-center space-x-1">
+                <span>Mức độ chi tiết</span>
+                <span className="text-emerald-600 font-bold">(Khuyên dùng)</span>
+              </label>
               <select
                 id={detailLevelSelectId}
                 value={draft.detailLevel}
                 onChange={(e) => setDraft({ ...draft, detailLevel: e.target.value as DetailLevel })}
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 text-sm outline-hidden bg-white"
+                className="w-full px-3.5 py-2 rounded-xl border border-sky-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 text-sm outline-hidden bg-sky-50/40 font-semibold text-sky-900"
               >
-                <option value="Ngắn gọn">Ngắn gọn (Trực tiếp, súc tích)</option>
-                <option value="Tiêu chuẩn">Tiêu chuẩn (Đầy đủ mục theo NĐ 30)</option>
+                <option value="Rất chi tiết">Rất chi tiết (Tối đa dung lượng, 5 - 7 mục lớn, chi tiết nhất)</option>
                 <option value="Chi tiết">Chi tiết (Kèm biện pháp & phân công)</option>
-                <option value="Rất chi tiết">Rất chi tiết (Mở rộng biểu mẫu, lộ trình)</option>
+                <option value="Tiêu chuẩn">Tiêu chuẩn (Đầy đủ mục theo NĐ 30)</option>
+                <option value="Ngắn gọn">Ngắn gọn (Trực tiếp, súc tích)</option>
               </select>
             </div>
 
@@ -967,7 +1215,7 @@ export const DocWizard: React.FC<DocWizardProps> = ({
               <div>Loại: <strong className="text-slate-900">{draft.docType}</strong></div>
               <div>Đơn vị: <strong className="text-slate-900">{draft.orgName}</strong></div>
               <div>Người ký: <strong className="text-slate-900">{draft.signerName} ({draft.signerRole})</strong></div>
-              <div>Loại ký: <strong className="text-slate-900">{draft.signType}</strong></div>
+              <div>Chi tiết: <strong className="text-emerald-700">{draft.detailLevel}</strong></div>
             </div>
           </div>
 
@@ -976,7 +1224,7 @@ export const DocWizard: React.FC<DocWizardProps> = ({
               onClick={() => setStep(4)}
               className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50 transition-colors"
             >
-              Quay lại
+              Quay lại kho ý tưởng
             </button>
             <button
               onClick={() => setStep(6)}

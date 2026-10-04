@@ -71,6 +71,40 @@ export default function App() {
     setCurrentTab("wizard");
   };
 
+  // Handler: 1-Click Auto Idea (No typing needed, maximum length & detail)
+  const handleStartAutoIdea = (prompt?: string, docType?: string) => {
+    const currentYear = new Date().getFullYear();
+    const todayStr = `ngày ${new Date().getDate().toString().padStart(2, "0")} tháng ${(new Date().getMonth() + 1).toString().padStart(2, "0")} năm ${currentYear}`;
+    const selectedDocType = docType || "Kế hoạch";
+    const selectedPrompt =
+      prompt ||
+      "Xây dựng kế hoạch thực hiện nhiệm vụ năm học toàn diện với các mục tiêu: nâng cao chất lượng giáo dục mũi nhọn và đại trà, đẩy mạnh chuyển đổi số trong dạy học và quản lý, xây dựng trường học hạnh phúc, tăng cường giáo dục đạo đức lối sống cho học sinh.";
+
+    setWizardDraft({
+      docType: selectedDocType,
+      category: "school",
+      parentOrg: "SỞ GIÁO DỤC VÀ ĐÀO TẠO",
+      orgName: "TRƯỜNG THCS NGUYỄN DU",
+      orgType: "Trường THCS",
+      address: "Số 12 Đường Hùng Vương",
+      location: "Hà Nội",
+      province: "Thành phố Hà Nội",
+      adminUnit: "Phường Điện Biên",
+      code: `Số: .../${selectedDocType === "Kế hoạch" ? "KH" : selectedDocType === "Quyết định" ? "QĐ" : selectedDocType === "Báo cáo" ? "BC" : "TT"}-THCSND`,
+      date: todayStr,
+      signerName: "Trần Văn An",
+      signerRole: "Hiệu trưởng",
+      signType: "Ký trực tiếp",
+      prompt: selectedPrompt,
+      detailLevel: "Rất chi tiết",
+      style: "Hành chính chuẩn",
+      audience: "Nhà trường",
+      initialStep: 6,
+      autoStart: true,
+    });
+    setCurrentTab("wizard");
+  };
+
   // Handler: Start from Home category shortcut
   const handleSelectHomeCategory = (cat: string) => {
     setTemplateFilter(cat);
@@ -150,6 +184,7 @@ export default function App() {
               setCurrentTab("templates");
             }}
             onSelectCategory={handleSelectHomeCategory}
+            onStartAutoIdea={handleStartAutoIdea}
           />
         )}
 
